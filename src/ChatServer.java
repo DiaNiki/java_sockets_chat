@@ -1,13 +1,14 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.stream.Collectors;
 
 public class ChatServer {
     static final int PORT = 9876;
     private static final HashSet<String> names = new HashSet<>();
-    private static HashSet<ObjectOutputStream> writers = new HashSet<>();
+    private static HashMap<String, ObjectOutputStream> writers = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
         System.out.println("The chat server is running.");
@@ -50,12 +51,12 @@ public class ChatServer {
                     }
                 }
 
-                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED));
-                for (ObjectOutputStream writer : writers) {
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED).setReceiver(name));
+                for (ObjectOutputStream writer : writers.values()) {
                     writer.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_IN).setData(name));
                 }
 
-                writers.add(out);
+                writers.put(name, out);
 
                 out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CONTACT_LIST).setData(
                         names.stream().collect(Collectors.joining(";"))
@@ -66,8 +67,15 @@ public class ChatServer {
                     if (input == null) {
                         return;
                     }
-                    for (ObjectOutputStream writer : writers) {
-                        writer.writeObject(input.setSender(name));
+                    switch (input.getMessageType()) {
+                        case MESSAGE_BROADCAST:
+                            for (ObjectOutputStream writer : writers.values()) {
+                                writer.writeObject(input.setSender(name));
+                            }
+                            break;
+                        case MESSAGE_DIRECT:
+                            writers.get(input.getReceiver()).writeObject(input.setSender(name));
+                            break;
                     }
                 }
             } catch (IOException e) {
@@ -79,13 +87,12 @@ public class ChatServer {
                     names.remove(name);
                 }
                 if (out != null) {
-                    writers.remove(out);
+                    writers.remove(name);
                 }
-                for (ObjectOutputStream writer : writers) {
+                for (ObjectOutputStream writer : writers.values()) {
                     try {
                         writer.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_OUT).setData(name));
                     } catch (IOException e) {
-                        e.printStackTrace();
                     }
                 }
                 try {

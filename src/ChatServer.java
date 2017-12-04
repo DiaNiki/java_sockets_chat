@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
+import java.util.stream.Collectors;
 
 public class ChatServer {
     static final int PORT = 9876;
@@ -50,7 +51,15 @@ public class ChatServer {
                 }
 
                 out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED));
+                for (ObjectOutputStream writer : writers) {
+                    writer.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_IN).setData(name));
+                }
+
                 writers.add(out);
+
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CONTACT_LIST).setData(
+                        names.stream().collect(Collectors.joining(";"))
+                ));
 
                 while (true) {
                     ClientServerMessage input = (ClientServerMessage) in.readObject();
@@ -71,6 +80,13 @@ public class ChatServer {
                 }
                 if (out != null) {
                     writers.remove(out);
+                }
+                for (ObjectOutputStream writer : writers) {
+                    try {
+                        writer.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_OUT).setData(name));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
                 try {
                     socket.close();

@@ -18,7 +18,7 @@ public class ChatClient {
 
         textField.addActionListener(e -> {
             try {
-                out.writeObject(textField.getText());
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.MESSAGE_BROADCAST).setData(textField.getText()));
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
@@ -49,13 +49,13 @@ public class ChatClient {
         in = new ObjectInputStream(socket.getInputStream());
 
         while (true) {
-            String line = (String) in.readObject();
-            if (line.startsWith("SUBMITNAME")) {
-                out.writeObject(getName());
-            } else if (line.startsWith("NAMEACCEPTED")) {
+            ClientServerMessage message = (ClientServerMessage) in.readObject();
+            if (message.getMessageType() == ClientServerMessage.MessageType.CLIENT_NAME_REQUEST) {
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_SUBMIT).setData(getName()));
+            } else if (message.getMessageType() == ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED) {
                 textField.setEditable(true);
-            } else if (line.startsWith("MESSAGE")) {
-                messageArea.append(line.substring(8) + "\n");
+            } else if (message.getMessageType() == ClientServerMessage.MessageType.MESSAGE_BROADCAST) {
+                messageArea.append(message.getSender() + ": " + message.getData() + "\n");
             }
         }
     }

@@ -4,8 +4,8 @@ import java.net.Socket;
 import java.util.HashSet;
 
 public class ChatServer {
-    public static final int PORT = 9876;
-    private static HashSet<String> names = new HashSet<>();
+    static final int PORT = 9876;
+    private static final HashSet<String> names = new HashSet<>();
     private static HashSet<ObjectOutputStream> writers = new HashSet<>();
 
     public static void main(String[] args) throws Exception {
@@ -36,8 +36,8 @@ public class ChatServer {
                 out = new ObjectOutputStream(socket.getOutputStream());
 
                 while (true) {
-                    out.writeObject("SUBMITNAME");
-                    name = (String) in.readObject();
+                    out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_REQUEST));
+                    name = ((ClientServerMessage) in.readObject()).getData();
                     if (name == null) {
                         return;
                     }
@@ -49,16 +49,16 @@ public class ChatServer {
                     }
                 }
 
-                out.writeObject("NAMEACCEPTED");
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED));
                 writers.add(out);
 
                 while (true) {
-                    String input = (String) in.readObject();
+                    ClientServerMessage input = (ClientServerMessage) in.readObject();
                     if (input == null) {
                         return;
                     }
                     for (ObjectOutputStream writer : writers) {
-                        writer.writeObject("MESSAGE " + name + ": " + input);
+                        writer.writeObject(input.setSender(name));
                     }
                 }
             } catch (IOException e) {

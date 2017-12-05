@@ -37,44 +37,30 @@ public class ChatServer {
                 in = new ObjectInputStream(socket.getInputStream());
                 out = new ObjectOutputStream(socket.getOutputStream());
 
-                while (true) {
-                    out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_REQUEST));
-                    name = ((ClientServerMessage) in.readObject()).getData();
-                    if (name == null) {
-                        return;
-                    }
-                    synchronized (names) {
-                        if (!names.contains(name)) {
-                            names.add(name);
-                            break;
-                        }
-                    }
+                if (!requestNameFromClient()) {
+                    return;
                 }
 
+                // Notify client that name has been accepted
                 out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED).setReceiver(name));
-                for (ObjectOutputStream writer : writers.values()) {
-                    writer.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_IN).setData(name));
-                }
+                broadCastMessage(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_IN).setData(name));
 
                 writers.put(name, out);
 
-                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CONTACT_LIST).setData(
-                        names.stream().collect(Collectors.joining(";"))
-                ));
+                sendClientChatData();
 
                 while (true) {
                     ClientServerMessage input = (ClientServerMessage) in.readObject();
                     if (input == null) {
                         return;
                     }
+                    input.setSender(name);
                     switch (input.getMessageType()) {
                         case MESSAGE_BROADCAST:
-                            for (ObjectOutputStream writer : writers.values()) {
-                                writer.writeObject(input.setSender(name));
-                            }
+                            broadCastMessage(input);
                             break;
                         case MESSAGE_DIRECT:
-                            writers.get(input.getReceiver()).writeObject(input.setSender(name));
+                            writers.get(input.getReceiver()).writeObject(input);
                             break;
                     }
                 }
@@ -83,22 +69,52 @@ public class ChatServer {
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
             } finally {
-                if (name != null) {
-                    names.remove(name);
+                shutDownClient();
+            }
+        }
+
+        boolean requestNameFromClient() throws IOException, ClassNotFoundException {
+            while (true) {
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_REQUEST));
+                name = ((ClientServerMessage) in.readObject()).getData();
+                if (name == null) {
+                    return false;
                 }
-                if (out != null) {
-                    writers.remove(name);
-                }
-                for (ObjectOutputStream writer : writers.values()) {
-                    try {
-                        writer.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_OUT).setData(name));
-                    } catch (IOException e) {
+                synchronized (names) {
+                    if (!names.contains(name)) {
+                        names.add(name);
+                        return true;
                     }
                 }
+            }
+        }
+
+        void sendClientChatData() throws IOException {
+            out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CONTACT_LIST).setData(
+                    names.stream().collect(Collectors.joining(";"))
+            ));
+        }
+
+        void broadCastMessage(ClientServerMessage message) {
+            for (ObjectOutputStream writer : writers.values()) {
                 try {
-                    socket.close();
-                } catch (IOException e) {
+                    writer.writeObject(message);
+                } catch (IOException ignored) {
                 }
+            }
+        }
+
+        void shutDownClient() {
+            if (name != null) {
+                names.remove(name);
+            }
+            if (out != null) {
+                writers.remove(name);
+            }
+            broadCastMessage(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_OUT).setData(name));
+            try {
+                socket.close();
+            } catch (IOException e) {
             }
         }
     }

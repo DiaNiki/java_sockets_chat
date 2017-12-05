@@ -74,7 +74,6 @@ public class ChatClient {
             }
             textField.setText("");
         });
-        textField.setText("localhost");
 
         frame.setVisible(true);
     }

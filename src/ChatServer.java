@@ -1,6 +1,9 @@
-import java.io.*;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.stream.Collectors;
@@ -8,7 +11,9 @@ import java.util.stream.Collectors;
 public class ChatServer {
     static final int PORT = 9876;
     private static final HashSet<String> names = new HashSet<>();
-    private static HashMap<String, ObjectOutputStream> writers = new HashMap<>();
+    private static final HashMap<String, ObjectOutputStream> writers = new HashMap<>();
+    private static final ArrayList<ClientServerMessage> broadMessages = new ArrayList<>();
+    private static final HashMap<String, HashMap<String, ArrayList<ClientServerMessage>>> messages = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
         System.out.println("The chat server is running.");
@@ -44,8 +49,14 @@ public class ChatServer {
                 // Notify client that name has been accepted
                 out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CLIENT_NAME_ACCEPTED).setReceiver(name));
                 broadCastMessage(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_IN).setData(name));
+                synchronized (broadMessages) {
+                    out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CHAT_MESSAGES_UPDATE)
+                            .setData(broadMessages.stream().map(ClientServerMessage::toString).collect(Collectors.joining(""))));
+                }
 
-                writers.put(name, out);
+                synchronized (names) {
+                    writers.put(name, out);
+                }
 
                 sendClientChatData();
 
@@ -57,10 +68,16 @@ public class ChatServer {
                     input.setSender(name);
                     switch (input.getMessageType()) {
                         case MESSAGE_BROADCAST:
+                            synchronized (broadMessages) {
+                                broadMessages.add(input);
+                            }
                             broadCastMessage(input);
                             break;
                         case MESSAGE_DIRECT:
-                            writers.get(input.getReceiver()).writeObject(input);
+                            synchronized (names) {
+                                writers.get(input.getReceiver()).writeObject(input);
+                            }
+                            storeUserMessage(input);
                             break;
                     }
                 }
@@ -90,31 +107,57 @@ public class ChatServer {
         }
 
         void sendClientChatData() throws IOException {
-            out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CONTACT_LIST).setData(
-                    names.stream().collect(Collectors.joining(";"))
-            ));
+            synchronized (names) {
+                out.writeObject(new ClientServerMessage(ClientServerMessage.MessageType.CONTACT_LIST).setData(
+                        names.stream().collect(Collectors.joining(";"))
+                ));
+            }
         }
 
         void broadCastMessage(ClientServerMessage message) {
-            for (ObjectOutputStream writer : writers.values()) {
-                try {
-                    writer.writeObject(message);
-                } catch (IOException ignored) {
+            synchronized (names) {
+                for (ObjectOutputStream writer : writers.values()) {
+                    try {
+                        writer.writeObject(message);
+                    } catch (IOException ignored) {
+                    }
                 }
             }
         }
 
         void shutDownClient() {
-            if (name != null) {
-                names.remove(name);
-            }
-            if (out != null) {
-                writers.remove(name);
+            synchronized (names) {
+                if (name != null) {
+                    names.remove(name);
+                }
+                if (out != null) {
+                    writers.remove(name);
+                }
+                synchronized (messages) {
+                    messages.remove(name);
+                }
             }
             broadCastMessage(new ClientServerMessage(ClientServerMessage.MessageType.USER_LOGGED_OUT).setData(name));
             try {
                 socket.close();
             } catch (IOException e) {
+            }
+        }
+
+        void storeUserMessage(ClientServerMessage message) {
+            storeUserMessage(message.getSender(), message.getReceiver(), message);
+            storeUserMessage(message.getReceiver(), message.getSender(), message);
+        }
+
+        void storeUserMessage(String userA, String userB, ClientServerMessage message) {
+            synchronized (messages) {
+                if (!messages.containsKey(userA)) {
+                    messages.put(userA, new HashMap<>());
+                }
+                if (!messages.get(userA).containsKey(userB)) {
+                    messages.get(userA).put(userB, new ArrayList<>());
+                }
+                messages.get(userA).get(userB).add(message);
             }
         }
     }

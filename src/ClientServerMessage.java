@@ -10,7 +10,9 @@ public class ClientServerMessage implements Serializable {
 
         CONTACT_LIST,
         USER_LOGGED_IN,
-        USER_LOGGED_OUT
+        USER_LOGGED_OUT,
+
+        CHAT_MESSAGES_UPDATE
     }
 
     private MessageType messageType;
@@ -40,5 +42,10 @@ public class ClientServerMessage implements Serializable {
     public ClientServerMessage setData(String data) {
         this.data = data;
         return this;
+    }
+
+    @Override
+    public String toString() {
+        return getSender() + ": " + getData() + "\n";
     }
 }

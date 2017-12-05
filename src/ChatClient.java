@@ -113,16 +113,15 @@ public class ChatClient {
                     break;
                 case MESSAGE_BROADCAST:
                     if (userSelected == null) {
-                        messageArea.append(message.getSender() + ": " + message.getData() + "\n");
+                        messageArea.append(message.toString());
                     }
-                    broadMessages += message.getSender() + ": " + message.getData() + "\n";
+                    broadMessages += message.toString();
                     break;
                 case MESSAGE_DIRECT:
                     if (userSelected != null && userSelected.equals(message.getSender())) {
-                        messageArea.append(message.getSender() + ": " + message.getData() + "\n");
+                        messageArea.append(message.toString());
                     }
-                    messages.put(message.getSender(), messages.getOrDefault(message.getSender(), "") +
-                            message.getSender() + ": " + message.getData() + "\n");
+                    messages.put(message.getSender(), messages.getOrDefault(message.getSender(), "") + message.toString());
                     break;
                 case CONTACT_LIST:
                     populateUsersList(message.getData().split(";"));
@@ -132,6 +131,14 @@ public class ChatClient {
                     break;
                 case USER_LOGGED_OUT:
                     removeUserFromList(message.getData());
+                    break;
+                case CHAT_MESSAGES_UPDATE:
+                    if (message.getSender() == null) {
+                        if (userSelected == null) {
+                            messageArea.setText(message.getData());
+                        }
+                        broadMessages = message.getData();
+                    }
                     break;
             }
         }

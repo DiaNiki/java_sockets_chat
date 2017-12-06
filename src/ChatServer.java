@@ -1,3 +1,5 @@
+import javax.swing.*;
+import java.awt.*;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -15,7 +17,12 @@ public class ChatServer {
     private static final ArrayList<ClientServerMessage> broadMessages = new ArrayList<>();
     private static final HashMap<String, HashMap<String, ArrayList<ClientServerMessage>>> messages = new HashMap<>();
 
+    private static final JFrame frame = new JFrame("Chat server");
+    private static final JTextArea messageArea = new JTextArea();
+    private static final DefaultListModel usersListModel = new DefaultListModel();
+
     public static void main(String[] args) throws Exception {
+        setUpUIApp();
         System.out.println("The chat server is running.");
         ServerSocket listener = new ServerSocket(PORT);
         try {
@@ -24,6 +31,75 @@ public class ChatServer {
             }
         } finally {
             listener.close();
+        }
+    }
+
+    private static void setUpUIApp() {
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(new Dimension(1200, 700));
+        messageArea.setEditable(false);
+        JList usersListLeft = new JList();
+        JList usersListRight = new JList();
+        usersListLeft.setModel(usersListModel);
+        usersListLeft.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        usersListLeft.setLayoutOrientation(JList.VERTICAL);
+        usersListLeft.setVisibleRowCount(-1);
+        usersListLeft.addListSelectionListener(e -> {
+            listSelected(usersListLeft.getSelectedIndex(), usersListRight.getSelectedIndex());
+        });
+        usersListRight.setModel(usersListModel);
+        usersListRight.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        usersListRight.setLayoutOrientation(JList.VERTICAL);
+        usersListRight.setVisibleRowCount(-1);
+        usersListRight.addListSelectionListener(e -> {
+            listSelected(usersListLeft.getSelectedIndex(), usersListRight.getSelectedIndex());
+        });
+        frame.add(BorderLayout.CENTER, new JScrollPane(messageArea));
+        JScrollPane listScrollLeft = new JScrollPane(usersListLeft);
+        listScrollLeft.setPreferredSize(new Dimension(300, 100));
+        JScrollPane listScrollRight = new JScrollPane(usersListRight);
+        listScrollRight.setPreferredSize(new Dimension(300, 100));
+        JPanel usersPanel = new JPanel();
+        usersPanel.setLayout(new BorderLayout());
+        usersPanel.add(BorderLayout.WEST, listScrollLeft);
+        usersPanel.add(BorderLayout.EAST, listScrollRight);
+        frame.add(BorderLayout.WEST, usersPanel);
+
+        usersListLeft.setSelectedIndex(0);
+        usersListRight.setSelectedIndex(0);
+        usersListModel.addElement("All");
+
+        frame.setVisible(true);
+    }
+
+    private static void listSelected(int indexLeft, int indexRight) {
+        if (indexLeft == -1 || indexRight == -1) {
+            return;
+        }
+        if (indexLeft == 0 && indexRight == 0) synchronized (broadMessages) {
+            messageArea.setText(broadMessages.stream().map(ClientServerMessage::toString).collect(Collectors.joining("")));
+        } else if (indexLeft == 0) {
+            String receiver = (String) usersListModel.get(indexRight);
+            messageArea.setText(broadMessages.stream().filter(message -> !message.getSender().equals(receiver))
+                    .map(ClientServerMessage::toString).collect(Collectors.joining("")));
+        } else if (indexRight == 0) {
+            String sender = (String) usersListModel.get(indexLeft);
+            messageArea.setText(broadMessages.stream().filter(message -> message.getSender().equals(sender))
+                    .map(ClientServerMessage::toString).collect(Collectors.joining("")));
+        } else {
+            String userA = (String) usersListModel.get(indexLeft);
+            String userB = (String) usersListModel.get(indexRight);
+            ArrayList<ClientServerMessage> chatMessages = null;
+            if (messages.containsKey(userA) && messages.get(userA).containsKey(userB)) {
+                chatMessages = messages.get(userA).get(userB);
+            } else if (messages.containsKey(userB) && messages.get(userB).containsKey(userA)) {
+                chatMessages = messages.get(userB).get(userA);
+            }
+            if (chatMessages == null) {
+                messageArea.setText("");
+            } else {
+                messageArea.setText(chatMessages.stream().map(ClientServerMessage::toString).collect(Collectors.joining("")));
+            }
         }
     }
 
@@ -100,6 +176,7 @@ public class ChatServer {
                 synchronized (names) {
                     if (!names.contains(name)) {
                         names.add(name);
+                        usersListModel.addElement(name);
                         return true;
                     }
                 }
@@ -133,6 +210,12 @@ public class ChatServer {
                 if (out != null) {
                     writers.remove(name);
                 }
+                for (int i = 1; i < usersListModel.size(); ++i) {
+                    if (usersListModel.get(i).equals(name)) {
+                        usersListModel.remove(i);
+                        break;
+                    }
+                }
                 synchronized (messages) {
                     messages.remove(name);
                 }
@@ -146,7 +229,9 @@ public class ChatServer {
 
         void storeUserMessage(ClientServerMessage message) {
             storeUserMessage(message.getSender(), message.getReceiver(), message);
-            storeUserMessage(message.getReceiver(), message.getSender(), message);
+            if (!message.getSender().equals(message.getReceiver())) {
+                storeUserMessage(message.getReceiver(), message.getSender(), message);
+            }
         }
 
         void storeUserMessage(String userA, String userB, ClientServerMessage message) {
